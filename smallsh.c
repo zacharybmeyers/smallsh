@@ -3,16 +3,22 @@
 #include <stdlib.h>
 
 void prompt_user() {
-    char *line = NULL;
-    size_t len = 0;
-    ssize_t nread = 0;
+    int prompt_len = 2048;
+    char line[prompt_len];
     
     printf(": ");
-    nread = getline(&line, &len, stdin);
-    line[nread - 1] = '\0';
-    printf("you entered: %s\n", line);
+    fgets(line, prompt_len, stdin);
     
-    free(line);
+    // remove newline char
+    for (int i = 0; i < prompt_len; i++) {
+        if (line[i] == '\n') {
+            line[i] = '\0';
+            break;
+        }
+        printf("%c\n", line[i]);
+    }
+
+    printf("you entered: %s\n", line);
 }
 
 int main() {
