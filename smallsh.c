@@ -51,13 +51,11 @@ CommandLine *create_command_line(char *line) {
     cmd->command = calloc(strlen(token) + 1, sizeof(char));
     strcpy(cmd->command, token);
 
-    // move to next token
-    token = strtok_r(NULL, " ", &saveptr);
-
     // create flags to track special symbols and index of arguments
     int input_flag = 0, output_flag = 0, i = 0;  
 
-    while (token != NULL) {        
+    // get next token, iterate while token != NULL
+    while ( (token = strtok_r(NULL, " ", &saveptr)) ) {        
         // save token as input file
         if (input_flag) {
             cmd->input_file = calloc(strlen(token) + 1, sizeof(char));
@@ -96,8 +94,6 @@ CommandLine *create_command_line(char *line) {
         prev_token = calloc(strlen(token) + 1, sizeof(char));
         strcpy(prev_token, token);
 
-        // move to next token
-        token = strtok_r(NULL, " ", &saveptr);
     }
 
     // set background if & was the last token
@@ -112,6 +108,7 @@ CommandLine *create_command_line(char *line) {
     return cmd;
 }
 
+// helper function frees allocated memory for CommandLine struct
 void free_command_line(CommandLine *cmd) {
     free(cmd->command);
     for (int i = 0; i < 512; i++) {
