@@ -47,6 +47,11 @@ void create_command_line(char *line) {
     // create flags to track special symbols and index of arguments
     int input_flag = 0, output_flag = 0, i = 0;
 
+    // dummy pid
+    int pid = 39387;
+    char str_pid[256];
+    sprintf(str_pid, "%d", pid);    
+
     while (token != NULL) {        
         // save token as input file
         if (input_flag) {
@@ -71,9 +76,16 @@ void create_command_line(char *line) {
         }
         // otherwise, save token as an argument
         else {
-            cmd->args[i] = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(cmd->args[i], token);
-            i++;        
+            // variable expansion of $$ into smallsh pid
+            if (strcmp(token, "$$") == 0) {
+                cmd->args[i] = calloc(strlen(str_pid) + 1, sizeof(char));
+                strcpy(cmd->args[i], str_pid);
+                i++;
+            } else {
+                cmd->args[i] = calloc(strlen(token) + 1, sizeof(char));
+                strcpy(cmd->args[i], token);
+                i++;  
+            }      
         }
 
         // store prev_token
