@@ -5,18 +5,15 @@
 #include <unistd.h>
 
 typedef struct CommandLine {
-    char *command;
     char *args[512];
     char *input_file;
     char *output_file;
     int background;
-    int pid;
     int arg_count;
 } CommandLine;
 
 // helper function to print contents of CommandLine struct
 void debug_command_line(CommandLine *cmd) {
-    printf("cmd->command: %s\n", cmd->command);
     for (int i = 0; i < 512; i++) {
         if (cmd->args[i] == NULL) {
             break;
@@ -26,7 +23,6 @@ void debug_command_line(CommandLine *cmd) {
     printf("cmd->input_file: %s\n", cmd->input_file);
     printf("cmd->output_file: %s\n", cmd->output_file);
     printf("cmd->background: %d\n", cmd->background);
-    printf("cmd->pid: %d\n", cmd->pid);
     printf("cmd->arg_count: %d\n", cmd->arg_count);
 }
 
@@ -34,15 +30,18 @@ void debug_command_line(CommandLine *cmd) {
 CommandLine *create_command_line(char *line) {
     CommandLine *cmd = malloc(sizeof(CommandLine));
     // init struct fields
-    cmd->command = NULL;
     for (int i = 0; i < 512; i++) {
         cmd->args[i] = NULL;
     }
     cmd->input_file = NULL;
     cmd->output_file = NULL;
     cmd->background = 0;
-    cmd->pid = 0;
     cmd->arg_count = 0;
+
+    // convert pid to string for variable expansion
+    char str_pid[32];
+    sprintf(str_pid, "%d", getpid());
+    printf("string pid: %s\n", str_pid);
     
     // start tokenizing line, make copy as prev_token for later use
     char *saveptr;
@@ -50,15 +49,11 @@ CommandLine *create_command_line(char *line) {
     char *prev_token = calloc(strlen(token) + 1, sizeof(char));
     strcpy(prev_token, token);
 
-    // first token is command
-    cmd->command = calloc(strlen(token) + 1, sizeof(char));
-    strcpy(cmd->command, token);
-
     // create flags to track special symbols and index of arguments
     int input_flag = 0, output_flag = 0, i = 0;  
 
     // get next token, iterate while token != NULL
-    while ( (token = strtok_r(NULL, " ", &saveptr)) ) {        
+    while (token != NULL) {        
         // save token as input file
         if (input_flag) {
             cmd->input_file = calloc(strlen(token) + 1, sizeof(char));
@@ -84,10 +79,14 @@ CommandLine *create_command_line(char *line) {
         else {
             // variable expansion: if $$ set smallsh pid
             if (strcmp(token, "$$") == 0) {
-                cmd->pid = getpid();
+                cmd->args[i] = calloc(strlen(str_pid) + 1, sizeof(char));
+                strcpy(cmd->args[i], str_pid);
+            } 
+            // normal argument
+            else {
+                cmd->args[i] = calloc(strlen(token) + 1, sizeof(char));
+                strcpy(cmd->args[i], token);
             }
-            cmd->args[i] = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(cmd->args[i], token);
             i++;     
         }
 
@@ -96,6 +95,9 @@ CommandLine *create_command_line(char *line) {
         free(prev_token);
         prev_token = calloc(strlen(token) + 1, sizeof(char));
         strcpy(prev_token, token);
+
+        // get next token
+        token = strtok_r(NULL, " ", &saveptr);
 
     }
 
@@ -117,7 +119,6 @@ CommandLine *create_command_line(char *line) {
 
 // helper function frees allocated memory for CommandLine struct
 void free_command_line(CommandLine *cmd) {
-    free(cmd->command);
     for (int i = 0; i < 512; i++) {
         if (cmd->args[i] == NULL) {
             break;
@@ -130,26 +131,8 @@ void free_command_line(CommandLine *cmd) {
 }
 
 void execute_command(CommandLine *cmd) {
-    // create new array for exec function
-    char *args[512];
-    for (int i = 0; i < 512; i++) {
-        args[i] = NULL;
-    }
-    args[0] = calloc(strlen(cmd->command) + 1, sizeof(char));
-    strcpy(args[0], cmd->command);
-        
-    for (int i = 0; i < cmd->arg_count; i++) {
-        args[i+1] = calloc(strlen(cmd->args[i]) + 1, sizeof(char));
-        strcpy(args[i+1], cmd->args[i]);
-    }
-
-    for (int i = 0; i < cmd->arg_count; i++) {
-        printf("args[0]: %s\n", args[0]);
-        printf("args[%d]: %s\n", i+1, args[i+1]);
-    }
-
     // execute function
-    execvp(args[0], args);
+    execvp(cmd->args[0], cmd->args);
     perror("execv");
     exit(EXIT_FAILURE);
 
@@ -193,10 +176,18 @@ int main() {
         CommandLine *cmd = create_command_line(line);
         debug_command_line(cmd);
 
-        // exit 
-        if (strcmp(cmd->command, "exit") == 0) {
+        // execute built-in commands 
+        if (strcmp(cmd->args[0], "exit") == 0) {
             runsh = 0;
-        } else {
+        } 
+        else if (strcmp(cmd->args[0], "cd") == 0) {
+            break;
+        }
+        else if (strcmp(cmd->args[0], "status") == 0) {
+            break;
+        }
+        // execute non-built in commands
+        else {
             execute_command(cmd);
         }
 
