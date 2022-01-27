@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 typedef struct CommandLine {
     char *args[512];
@@ -41,7 +42,6 @@ CommandLine *create_command_line(char *line) {
     // convert pid to string for variable expansion
     char str_pid[32];
     sprintf(str_pid, "%d", getpid());
-    printf("string pid: %s\n", str_pid);
     
     // start tokenizing line, make copy as prev_token for later use
     char *saveptr;
@@ -78,6 +78,12 @@ CommandLine *create_command_line(char *line) {
         // otherwise, save token as an argument
         else {
             // variable expansion: if $$ set smallsh pid
+            char *new_token = calloc(strlen(token))
+            for (int i = 0; i < strlen(token); i++) {
+                if (token[i] == '$' && token[i+1] == '$') {
+
+                }
+            }
             if (strcmp(token, "$$") == 0) {
                 cmd->args[i] = calloc(strlen(str_pid) + 1, sizeof(char));
                 strcpy(cmd->args[i], str_pid);
@@ -131,15 +137,25 @@ void free_command_line(CommandLine *cmd) {
 }
 
 void execute_command(CommandLine *cmd) {
-    // execute function
-    execvp(cmd->args[0], cmd->args);
-    perror("execv");
-    exit(EXIT_FAILURE);
+    int child_status;
 
-    // // free new array
-    // for (int i = 0; i < cmd->arg_count; i++) {
-    //     free(args[i]);
-    // }
+    pid_t spawn_pid = fork();
+
+    switch(spawn_pid) {
+    case -1:
+        perror("fork()\n");
+        exit(1);
+        break;
+    case 0:
+        // in child process
+        execvp(cmd->args[0], cmd->args);
+        perror("execvp");
+        exit(2);
+        break;
+    default:
+        // in parent process, wait for child to terminate
+        spawn_pid = waitpid(spawn_pid, &child_status, 0);
+    }
 }
 
 int main() {
@@ -164,11 +180,8 @@ int main() {
             }
         }
 
-        printf("you entered: %s\n", line);
-
         // if line is empty or line is a comment, return
         if (strcmp(line, "") == 0 || line[0] == '#') {
-            printf("no command!\n");
             continue;
         }
 
@@ -176,17 +189,31 @@ int main() {
         CommandLine *cmd = create_command_line(line);
         debug_command_line(cmd);
 
-        // execute built-in commands 
+        // BUILT-IN COMMANDS
+
+        // exit
         if (strcmp(cmd->args[0], "exit") == 0) {
             runsh = 0;
         } 
+        // cd
         else if (strcmp(cmd->args[0], "cd") == 0) {
-            break;
+            // if there is a directory argument
+            if (cmd->args[1]) {
+                if (chdir(cmd->args[1]) == -1) {
+                    printf("Could not find directory\n");
+                    fflush(stdout);
+                }
+            }
+            // else no argument, cd to home
+            else {
+                chdir(getenv("HOME"));
+            }
         }
+        // status
         else if (strcmp(cmd->args[0], "status") == 0) {
             break;
         }
-        // execute non-built in commands
+        // NON-BUILT IN COMMANDS
         else {
             execute_command(cmd);
         }
