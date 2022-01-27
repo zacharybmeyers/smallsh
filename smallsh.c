@@ -11,6 +11,7 @@ typedef struct CommandLine {
     char *output_file;
     int background;
     int pid;
+    int arg_count;
 } CommandLine;
 
 // helper function to print contents of CommandLine struct
@@ -26,6 +27,7 @@ void debug_command_line(CommandLine *cmd) {
     printf("cmd->output_file: %s\n", cmd->output_file);
     printf("cmd->background: %d\n", cmd->background);
     printf("cmd->pid: %d\n", cmd->pid);
+    printf("cmd->arg_count: %d\n", cmd->arg_count);
 }
 
 // function takes a valid line and unpacks it into a CommandLine struct
@@ -40,6 +42,7 @@ CommandLine *create_command_line(char *line) {
     cmd->output_file = NULL;
     cmd->background = 0;
     cmd->pid = 0;
+    cmd->arg_count = 0;
     
     // start tokenizing line, make copy as prev_token for later use
     char *saveptr;
@@ -102,6 +105,10 @@ CommandLine *create_command_line(char *line) {
         // remove & as last argument
         free(cmd->args[i-1]); 
         cmd->args[i-1] = NULL;
+        // set argument count
+        cmd->arg_count = i-1;
+    } else {
+        cmd->arg_count = i;
     }
 
     free(prev_token);
@@ -120,6 +127,36 @@ void free_command_line(CommandLine *cmd) {
     free(cmd->input_file);
     free(cmd->output_file);
     free(cmd);
+}
+
+void execute_command(CommandLine *cmd) {
+    // create new array for exec function
+    char *args[512];
+    for (int i = 0; i < 512; i++) {
+        args[i] = NULL;
+    }
+    args[0] = calloc(strlen(cmd->command) + 1, sizeof(char));
+    strcpy(args[0], cmd->command);
+        
+    for (int i = 0; i < cmd->arg_count; i++) {
+        args[i+1] = calloc(strlen(cmd->args[i]) + 1, sizeof(char));
+        strcpy(args[i+1], cmd->args[i]);
+    }
+
+    for (int i = 0; i < cmd->arg_count; i++) {
+        printf("args[0]: %s\n", args[0]);
+        printf("args[%d]: %s\n", i+1, args[i+1]);
+    }
+
+    // execute function
+    execvp(args[0], args);
+    perror("execv");
+    exit(EXIT_FAILURE);
+
+    // // free new array
+    // for (int i = 0; i < cmd->arg_count; i++) {
+    //     free(args[i]);
+    // }
 }
 
 int main() {
@@ -159,6 +196,8 @@ int main() {
         // exit 
         if (strcmp(cmd->command, "exit") == 0) {
             runsh = 0;
+        } else {
+            execute_command(cmd);
         }
 
         free_command_line(cmd);
