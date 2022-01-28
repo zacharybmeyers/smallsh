@@ -4,6 +4,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+
+int EXIT_STATUS = 0;
 
 typedef struct CommandLine {
     char *args[512];
@@ -136,7 +139,7 @@ void free_command_line(CommandLine *cmd) {
 }
 
 void execute_command(CommandLine *cmd) {
-    int child_status;
+    int child_status, result;
 
     pid_t spawn_pid = fork();
 
@@ -147,9 +150,50 @@ void execute_command(CommandLine *cmd) {
         break;
     case 0:
         // in child process
-        execvp(cmd->args[0], cmd->args);
-        perror("execvp");
-        exit(2);
+
+        // handle input
+        if (cmd->input_file != NULL) {
+            int sourceFD = open(cmd->input_file, O_RDONLY);
+            if (sourceFD == -1) {
+                printf("failed to open input file: %s\n", cmd->input_file);
+                fflush(stdout);
+                exit(1);
+            }
+
+            // redirect stdin to source file
+            result = dup2(sourceFD, 0);
+            if (result == -1) {
+                printf("failed source on dup2()\n");
+                fflush(stdout);
+                exit(1);
+            }
+        }
+
+
+        // handle output
+        if (cmd->output_file != NULL) {
+            int targetFD = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (targetFD == -1) {
+                printf("failed to open output file: %s\n", cmd->output_file);
+                fflush(stdout);
+                exit(1);
+            }
+            
+            // redirect stdout to target file
+            result = dup2(targetFD, 1);
+            if (result == -1) {
+                printf("failed target on dup2()\n");
+                fflush(stdout);
+                exit(1);
+            }
+        }
+
+        // execute command
+        if (execvp(cmd->args[0], cmd->args)) {
+            printf("%s: no such file or directory\n", cmd->args[0]);
+            fflush(stdout);
+            exit(1);
+        };
         break;
     default:
         // in parent process, wait for child to terminate
@@ -188,7 +232,7 @@ int main() {
 
         // not empty, break command into pieces and store in struct
         CommandLine *cmd = create_command_line(line);
-        debug_command_line(cmd);
+        //debug_command_line(cmd);
 
         // BUILT-IN COMMANDS
 
@@ -212,7 +256,8 @@ int main() {
         }
         // status
         else if (strcmp(cmd->args[0], "status") == 0) {
-            break;
+            printf("exit value %d\n", EXIT_STATUS);
+            fflush(stdout);
         }
         // NON-BUILT IN COMMANDS
         else {
