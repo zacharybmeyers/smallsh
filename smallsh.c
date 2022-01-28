@@ -25,6 +25,7 @@ void debug_command_line(CommandLine *cmd) {
     printf("cmd->output_file: %s\n", cmd->output_file);
     printf("cmd->background: %d\n", cmd->background);
     printf("cmd->arg_count: %d\n", cmd->arg_count);
+    fflush(stdout);
 }
 
 // function takes a valid line and unpacks it into a CommandLine struct
@@ -38,33 +39,26 @@ CommandLine *create_command_line(char *line) {
     cmd->output_file = NULL;
     cmd->background = 0;
     cmd->arg_count = 0;
-
-    // convert pid to string for variable expansion
-    char str_pid[32];
-    sprintf(str_pid, "%d", getpid());
     
     // start tokenizing line, make copy as prev_token for later use
     char *saveptr;
     char *token = strtok_r(line, " ", &saveptr);
-    char *prev_token = calloc(strlen(token) + 1, sizeof(char));
-    strcpy(prev_token, token);
+    char *prev_token = strdup(token);
 
     // create flags to track special symbols and index of arguments
     int input_flag = 0, output_flag = 0, i = 0;  
 
-    // get next token, iterate while token != NULL
-    while (token != NULL) {        
+    // iterate while token != NULL
+    do {        
         // save token as input file
         if (input_flag) {
-            cmd->input_file = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(cmd->input_file, token);
+            cmd->input_file = strdup(token);
             // reset special symbol flag
             input_flag = 0;
         }
         // save token as output file
         else if (output_flag) {
-            cmd->output_file = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(cmd->output_file, token);
+            cmd->output_file = strdup(token);
             // reset special symbol flag
             output_flag = 0;
         }
@@ -77,35 +71,40 @@ CommandLine *create_command_line(char *line) {
         }
         // otherwise, save token as an argument
         else {
-            // variable expansion: if $$ set smallsh pid
-            char *new_token = calloc(strlen(token))
+            // check for variable expansion in token
+            char expanded[256];
+            int offset = 0;
             for (int i = 0; i < strlen(token); i++) {
+                // if $$ is the next pair
                 if (token[i] == '$' && token[i+1] == '$') {
-
+                    // copy pid into expanded
+                    sprintf(expanded + offset, "%d", getpid());
+                    // update offset by new length
+                    offset = strlen(expanded);
+                    // advance i to next pair
+                    i++;
+                } 
+                // otherwise, copy char into expanded, increase offset by 1 char
+                else {
+                    sprintf(expanded + offset, "%c", token[i]);
+                    offset++;
                 }
             }
-            if (strcmp(token, "$$") == 0) {
-                cmd->args[i] = calloc(strlen(str_pid) + 1, sizeof(char));
-                strcpy(cmd->args[i], str_pid);
-            } 
-            // normal argument
-            else {
-                cmd->args[i] = calloc(strlen(token) + 1, sizeof(char));
-                strcpy(cmd->args[i], token);
-            }
-            i++;     
+
+            // point token to expanded version
+            token = expanded;
+
+            // copy argument (whether expanded or not)
+            cmd->args[i] = strdup(token);
+            i++;    
+
         }
 
-        // store prev_token
-        // prev_token = realloc(prev_token, sizeof(token));
+        // update prev_token
         free(prev_token);
-        prev_token = calloc(strlen(token) + 1, sizeof(char));
-        strcpy(prev_token, token);
+        prev_token = strdup(token);
 
-        // get next token
-        token = strtok_r(NULL, " ", &saveptr);
-
-    }
+    } while ( (token = strtok_r(NULL, " ", &saveptr)) );
 
     // set background if & was the last token
     if (strcmp(prev_token, "&") == 0) {
@@ -160,6 +159,7 @@ void execute_command(CommandLine *cmd) {
 
 int main() {
     printf("welcome to smallsh!\n");
+    fflush(stdout);
     
     int runsh = 1;
 
@@ -170,6 +170,7 @@ int main() {
         
         // start prompt with colon
         printf(": ");
+        fflush(stdout);
         fgets(line, prompt_len, stdin);
         
         // remove newline char
@@ -180,8 +181,8 @@ int main() {
             }
         }
 
-        // if line is empty or line is a comment, return
-        if (strcmp(line, "") == 0 || line[0] == '#') {
+        // if line starts empty, with whitespace, or with a comment, keep looping
+        if (line[0] == '\0' || line[0] == ' ' || line[0] == '#') {
             continue;
         }
 
