@@ -204,8 +204,6 @@ void execute_command(CommandLine *cmd) {
         default:
             // in parent process, wait for child to terminate
 
-            // GOAL: run background process, wait for it to terminate, display termination to user
-
             // execute in background if desired
             if (cmd->background) {
                 // display bg process start to user
@@ -228,11 +226,6 @@ void execute_command(CommandLine *cmd) {
             //     printf("child %d exited abnormally due to signal %d\n", child_pid, WTERMSIG(child_status));
             //     fflush(stdout);
             // }
-        }
-
-        while ( (child_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
-            printf("background pid %d is done\n", child_status);
-            fflush(stdout);
         }
 }
 
