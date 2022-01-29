@@ -140,82 +140,100 @@ void free_command_line(CommandLine *cmd) {
 
 void execute_command(CommandLine *cmd) {
     int child_status, result;
+    
+    pid_t child_pid = fork();
 
-    pid_t spawn_pid = fork();
-
-    switch(spawn_pid) {
-    case -1:
-        perror("fork()\n");
-        exit(1);
-        break;
-    case 0:
-        // in child process
-
-        // handle input
-        if (cmd->input_file != NULL) {
-            int sourceFD = open(cmd->input_file, O_RDONLY);
-            if (sourceFD == -1) {
-                printf("cannot open %s for input\n", cmd->input_file);
-                fflush(stdout);
-                exit(1);
-            }
-
-            // redirect stdin to source file
-            result = dup2(sourceFD, 0);
-            if (result == -1) {
-                printf("failed source on dup2()\n");
-                fflush(stdout);
-                exit(1);
-            }
-            
-            // close fd
-            fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
-        }
-
-
-        // handle output
-        if (cmd->output_file != NULL) {
-            int targetFD = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (targetFD == -1) {
-                printf("cannot open %s for output\n", cmd->output_file);
-                fflush(stdout);
-                exit(1);
-            }
-            
-            // redirect stdout to target file
-            result = dup2(targetFD, 1);
-            if (result == -1) {
-                printf("failed target on dup2()\n");
-                fflush(stdout);
-                exit(1);
-            }
-
-            // close fd
-            fcntl(targetFD, F_SETFD, FD_CLOEXEC);
-        }
-
-        // execute command
-        if (execvp(cmd->args[0], cmd->args)) {
-            printf("%s: no such file or directory\n", cmd->args[0]);
-            fflush(stdout);
+    switch(child_pid) {
+        case -1:
+            perror("fork()\n");
             exit(1);
-        };
-        break;
-    default:
-        // in parent process, wait for child to terminate
-        spawn_pid = waitpid(spawn_pid, &child_status, 0);
+            break;
+        case 0:
+            // in child process
 
-        // terminated normally
-        if (WIFEXITED(child_status)) {
-            printf("child exit status: %d\n", WEXITSTATUS(child_status));
+            // handle input
+            if (cmd->input_file != NULL) {
+                int sourceFD = open(cmd->input_file, O_RDONLY);
+                if (sourceFD == -1) {
+                    printf("cannot open %s for input\n", cmd->input_file);
+                    fflush(stdout);
+                    exit(1);
+                }
+
+                // redirect stdin to source file
+                result = dup2(sourceFD, 0);
+                if (result == -1) {
+                    printf("failed source on dup2()\n");
+                    fflush(stdout);
+                    exit(1);
+                }
+                
+                // close fd
+                fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
+            }
+
+
+            // handle output
+            if (cmd->output_file != NULL) {
+                int targetFD = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (targetFD == -1) {
+                    printf("cannot open %s for output\n", cmd->output_file);
+                    fflush(stdout);
+                    exit(1);
+                }
+                
+                // redirect stdout to target file
+                result = dup2(targetFD, 1);
+                if (result == -1) {
+                    printf("failed target on dup2()\n");
+                    fflush(stdout);
+                    exit(1);
+                }
+
+                // close fd
+                fcntl(targetFD, F_SETFD, FD_CLOEXEC);
+            }
+
+            // execute command
+            if (execvp(cmd->args[0], cmd->args)) {
+                printf("%s: no such file or directory\n", cmd->args[0]);
+                fflush(stdout);
+                exit(1);
+            };
+            break;
+        default:
+            // in parent process, wait for child to terminate
+
+            // GOAL: run background process, wait for it to terminate, display termination to user
+
+            // execute in background if desired
+            if (cmd->background) {
+                // display bg process start to user
+                printf("background pid is %d\n", child_pid);
+                fflush(stdout);
+                child_pid = waitpid(child_pid, &child_status, WNOHANG);
+            }
+            // execute normally
+            else {
+                child_pid = waitpid(child_pid, &child_status, 0);
+            }
+
+            // // terminated normally
+            // if (WIFEXITED(child_status)) {
+            //     printf("child %d exited normally with status: %d\n", child_pid, WEXITSTATUS(child_status));
+            //     fflush(stdout);
+            // }
+            // // terminated abnormally
+            // else {
+            //     printf("child %d exited abnormally due to signal %d\n", child_pid, WTERMSIG(child_status));
+            //     fflush(stdout);
+            // }
+        }
+
+        while ( (child_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
+            printf("background pid %d is done\n", child_status);
             fflush(stdout);
         }
-        // terminated abnormally
-        else {
-            printf("child did not terminate normally\n");
-            fflush(stdout);
-        }
-    }
 }
 
 int main() {
