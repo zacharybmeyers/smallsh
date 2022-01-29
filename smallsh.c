@@ -207,13 +207,13 @@ void execute_command(CommandLine *cmd) {
             // execute in background if desired
             if (cmd->background) {
                 // display bg process start to user
+                pid_t actual_pid = waitpid(child_pid, &child_status, WNOHANG);
                 printf("background pid is %d\n", child_pid);
                 fflush(stdout);
-                child_pid = waitpid(child_pid, &child_status, WNOHANG);
             }
             // execute normally
             else {
-                child_pid = waitpid(child_pid, &child_status, 0);
+                pid_t actual_pid = waitpid(child_pid, &child_status, 0);
             }
 
             // // terminated normally
@@ -227,6 +227,12 @@ void execute_command(CommandLine *cmd) {
             //     fflush(stdout);
             // }
         }
+
+        while ( (child_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
+            printf("background pid %d is done\n", child_pid);
+            fflush(stdout);
+        }
+
 }
 
 int main() {
