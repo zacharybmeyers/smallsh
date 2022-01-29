@@ -155,7 +155,7 @@ void execute_command(CommandLine *cmd) {
         if (cmd->input_file != NULL) {
             int sourceFD = open(cmd->input_file, O_RDONLY);
             if (sourceFD == -1) {
-                printf("failed to open input file: %s\n", cmd->input_file);
+                printf("cannot open %s for input\n", cmd->input_file);
                 fflush(stdout);
                 exit(1);
             }
@@ -167,6 +167,9 @@ void execute_command(CommandLine *cmd) {
                 fflush(stdout);
                 exit(1);
             }
+            
+            // close fd
+            fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
         }
 
 
@@ -174,7 +177,7 @@ void execute_command(CommandLine *cmd) {
         if (cmd->output_file != NULL) {
             int targetFD = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (targetFD == -1) {
-                printf("failed to open output file: %s\n", cmd->output_file);
+                printf("cannot open %s for output\n", cmd->output_file);
                 fflush(stdout);
                 exit(1);
             }
@@ -186,6 +189,9 @@ void execute_command(CommandLine *cmd) {
                 fflush(stdout);
                 exit(1);
             }
+
+            // close fd
+            fcntl(targetFD, F_SETFD, FD_CLOEXEC);
         }
 
         // execute command
@@ -198,6 +204,17 @@ void execute_command(CommandLine *cmd) {
     default:
         // in parent process, wait for child to terminate
         spawn_pid = waitpid(spawn_pid, &child_status, 0);
+
+        // terminated normally
+        if (WIFEXITED(child_status)) {
+            printf("child exit status: %d\n", WEXITSTATUS(child_status));
+            fflush(stdout);
+        }
+        // terminated abnormally
+        else {
+            printf("child did not terminate normally\n");
+            fflush(stdout);
+        }
     }
 }
 
