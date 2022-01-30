@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <signal.h>
 
 int EXIT_STATUS = 0;
 
@@ -29,6 +30,14 @@ void debug_command_line(CommandLine *cmd) {
     printf("cmd->background: %d\n", cmd->background);
     printf("cmd->arg_count: %d\n", cmd->arg_count);
     fflush(stdout);
+}
+
+// custom handler for Ctrl-C
+void sigint_handler(int signo) {
+    char *message = "terminated by signal 2\n";
+    write(STDOUT_FILENO, message, 23);
+    fflush(stdout);
+    // NEED tO ACTUALLY KILL CHILD PROCESS SOMEHOW?
 }
 
 // function takes a valid line and unpacks it into a CommandLine struct
@@ -139,6 +148,22 @@ void free_command_line(CommandLine *cmd) {
 }
 
 void execute_command(CommandLine *cmd) {
+    struct sigaction si_action = {{0}};
+    // background process: ignore Ctrl-C
+    if (cmd->background) {
+        si_action.sa_handler = SIG_IGN;
+        sigfillset(&si_action.sa_mask);
+        si_action.sa_flags = 0;
+        sigaction(SIGINT, &si_action, NULL);
+    }
+    // foreground process: assign signal handler for Ctrl-C
+    else {
+        si_action.sa_handler = sigint_handler;
+        sigfillset(&si_action.sa_mask);
+        si_action.sa_flags = 0;
+        sigaction(SIGINT, &si_action, NULL);
+    }
+    
     int child_status, result;
     
     pid_t child_pid = fork();
@@ -271,6 +296,14 @@ void execute_command(CommandLine *cmd) {
 int main() {
     printf("welcome to smallsh!\n");
     fflush(stdout);
+
+    // ignore ^C by default
+    struct sigaction si_action = {{0}};
+    si_action.sa_handler = SIG_IGN;
+    sigfillset(&si_action.sa_mask);
+    si_action.sa_flags = 0;
+    sigaction(SIGINT, &si_action, NULL);
+
 
     pid_t term_pid;
     int child_status;
