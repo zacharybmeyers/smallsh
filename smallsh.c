@@ -152,7 +152,7 @@ void execute_command(CommandLine *cmd) {
             // in child process
 
             // handle input
-            if (cmd->input_file != NULL) {
+            if (cmd->input_file != NULL) {                
                 int sourceFD = open(cmd->input_file, O_RDONLY);
                 if (sourceFD == -1) {
                     printf("cannot open %s for input\n", cmd->input_file);
@@ -170,8 +170,27 @@ void execute_command(CommandLine *cmd) {
                 
                 // close fd
                 fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
-            }
+            } 
+            // // no input specified AND background process... redirect to dev/null
+            // else if (cmd->background) {
+            //     int sourceFD = open("/dev/null", O_RDONLY);
+            //     if (sourceFD == -1) {
+            //         printf("cannot open /dev/null for input\n");
+            //         fflush(stdout);
+            //         exit(1);
+            //     }
 
+            //     // redirect stdin to source file
+            //     result = dup2(sourceFD, 0);
+            //     if (result == -1) {
+            //         printf("failed source on dup2()\n");
+            //         fflush(stdout);
+            //         exit(1);
+            //     }
+
+            //     // close fd
+            //     fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
+            // }
 
             // handle output
             if (cmd->output_file != NULL) {
@@ -193,13 +212,33 @@ void execute_command(CommandLine *cmd) {
                 // close fd
                 fcntl(targetFD, F_SETFD, FD_CLOEXEC);
             }
+            // // no output specified AND background process... redirect to dev/null
+            // else if (cmd->background) {
+            //     int targetFD = open("/dev/null", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            //     if (targetFD == -1) {
+            //         printf("cannot open /dev/null for output\n");
+            //         fflush(stdout);
+            //         exit(1);
+            //     }
+
+            //     // redirect stdin to source file
+            //     result = dup2(targetFD, 0);
+            //     if (result == -1) {
+            //         printf("failed source on dup2()\n");
+            //         fflush(stdout);
+            //         exit(1);
+            //     }
+
+            //     // close fd
+            //     fcntl(targetFD, F_SETFD, FD_CLOEXEC);
+            // }
 
             // execute command
             if (execvp(cmd->args[0], cmd->args)) {
                 printf("%s: no such file or directory\n", cmd->args[0]);
                 fflush(stdout);
                 exit(1);
-            };
+            }
             break;
         default:
             // in parent process, wait for child to terminate
@@ -239,7 +278,8 @@ int main() {
     int runsh = 1;
 
     do {
-        // check for any terminated background processes
+        // check for any terminated background processes before returning control to user
+        // (use while loop to catch multiple processes)
         while ( (term_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
             printf("background process %d is complete\n", term_pid);
             fflush(stdout);
