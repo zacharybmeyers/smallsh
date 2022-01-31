@@ -343,7 +343,9 @@ int main() {
 
     do {
         // check for background process that have exited normally
-        check_bg_processes();
+        if (WIFEXITED(EXIT_STATUS)) {
+            check_bg_processes();
+        }
 
         // set max prompt length
         int prompt_len = 2048;
