@@ -9,170 +9,47 @@
 
 int EXIT_STATUS = 0;
 
+void print_exit_status() {
+    // exited normally
+    if (WIFEXITED(EXIT_STATUS)) {
+        printf("exit value %d\n", WEXITSTATUS(EXIT_STATUS));
+        fflush(stdout);
+    }
+    // exited due to signal
+    else if (WIFSIGNALED(EXIT_STATUS)) {
+        printf("terminated by signal %d\n", WTERMSIG(EXIT_STATUS));
+        fflush(stdout);
+    }
+}
+
+void check_bg_processes() {
+    pid_t term_pid;
+    int child_status;
+
+    // check for any terminated background processes before returning control to user
+    // (use while loop to catch multiple processes)
+    while ( (term_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
+        printf("background pid %d is done: ", term_pid);
+        fflush(stdout);
+
+        EXIT_STATUS = child_status;
+        print_exit_status();
+    }
+}
+
 // custom handler for Ctrl-C
 void sigint_handler(int signo) {
-    char *message = "terminated by signal 2\n";
-    write(STDOUT_FILENO, message, 23);
-    fflush(stdout);
+    EXIT_STATUS = signo;
+    print_exit_status();
+    // char *message = "terminated by signal 2\n";
+    // write(STDOUT_FILENO, message, 23);
+    // fflush(stdout);
     // NEED TO ACTUALLY KILL CHILD PROCESS SOMEHOW?
-
-    // TODO: CONSIDER STORING A LINKED LIST OF BACKGROUND PIDS
-}
-
-/*
-    GLOBAL LINKED LIST FOR BACKGROUND PROCESSES AND ALL METHODS
-        --add_bg_process()
-        --remove_bg_head()
-        --remove_bg_tail()
-        --remove_bg_process()
-        --free_bg_list()
-        --print_bg_list()
-*/
-
-struct bg_process {
-    int bg_pid;
-    struct bg_process *prev;
-    struct bg_process *next;
-};
-
-struct bg_process *bg_head = NULL;
-struct bg_process *bg_tail = NULL;
-
-void add_bg_process(int pid) {
-    // create new node
-    struct bg_process *new_node = malloc(sizeof(struct bg_process));
-    new_node->bg_pid = pid;
-    new_node->prev = NULL;
-    new_node->next = NULL;
-    
-    // if no head, set head and tail
-    if (bg_head == NULL && bg_tail == NULL) {
-        bg_head = new_node;
-        bg_tail = new_node;
-    } 
-    // otherwise, add to end of list
-    else {
-        // end of list, add new node
-        bg_tail->next = new_node;
-        new_node->prev = bg_tail;
-        bg_tail = new_node;
-    }
-}
-
-void remove_bg_head() {
-    // if head is only node
-    if (bg_head->next == NULL && bg_head->prev == NULL) {
-        free(bg_head);
-        bg_head = NULL;
-        bg_tail = NULL;
-    } 
-    // otherwise, move head to next node
-    else {
-        struct bg_process *temp;
-        temp = bg_head;
-        bg_head = temp->next;
-        bg_head->prev = NULL;
-
-        temp->next = NULL;
-        free(temp);
-    }
-}
-
-void remove_bg_tail() {
-    // if tail is only node
-    if (bg_tail->next == NULL && bg_tail->prev == NULL) {
-        free(bg_tail);
-        bg_tail = NULL;
-        bg_head = NULL;
-    }
-    // otherwise, move tail to previous node
-    else {
-        struct bg_process *temp;
-        temp = bg_tail;
-        bg_tail = temp->prev;
-        bg_tail->next = NULL;
-
-        temp->prev = NULL;
-        free(temp);
-    }    
-}
-
-void remove_bg_process(int pid) {
-    // no processes to remove
-    if (bg_head == NULL && bg_tail == NULL) {
-        return;
-    }
-    // if head node
-    if (bg_head->bg_pid == pid) {
-        remove_bg_head();
-    }
-    // if tail node
-    else if (bg_tail->bg_pid == pid) {
-        remove_bg_tail();
-    }
-    // if middle node
-    else {
-        // get current node
-        struct bg_process *curr;
-        curr = bg_head;
-
-        // loop until curr node is the removal node
-        while (curr->bg_pid != pid) {
-            curr = curr->next;
-        }
-
-        // create pointers to left and right of curr
-        struct bg_process *left;
-        left = curr->prev;
-        struct bg_process *right;
-        right = curr->next;
-
-        // point over removal node
-        left->next = right;
-        right->prev = left;
-
-        // free removal node
-        free(curr);
-        curr->prev = NULL;
-        curr->next = NULL;
-    }
-    
-}
-
-void free_bg_list() {
-    // get head
-    struct bg_process *curr;
-    curr = bg_head;
-
-    // if there's at least one node
-    while (curr) {
-        // store next
-        struct bg_process *next;
-        next = curr->next;
-        // free curr node
-        free(curr);
-        curr->prev = NULL;
-        curr->next = NULL;
-        // update curr
-        curr = next;
-    }
-}
-
-void print_bg_list() {
-    struct bg_process *curr;
-    curr = bg_head;
-
-    printf("NULL ");
-    while (curr) {
-        printf("<- %d -> ", curr->bg_pid);
-        curr = curr->next;
-    }
-    printf("NULL\n");
 }
 
 /*
     COMMAND LINE STRUCT AND ALL METHODS
-        --debug_command_line()
+        --print_command_line()
         --create_command_line()
         --free_command_line()
         --execute_command()
@@ -187,7 +64,7 @@ typedef struct CommandLine {
 } CommandLine;
 
 // helper function to print contents of CommandLine struct
-void debug_command_line(CommandLine *cmd) {
+void print_command_line(CommandLine *cmd) {
     for (int i = 0; i < 512; i++) {
         if (cmd->args[i] == NULL) {
             break;
@@ -212,7 +89,7 @@ CommandLine *create_command_line(char *line) {
     cmd->output_file = NULL;
     cmd->background = 0;
     cmd->arg_count = 0;
-    
+
     // start tokenizing line, make copy as prev_token for later use
     char *saveptr;
     char *token = strtok_r(line, " ", &saveptr);
@@ -303,8 +180,12 @@ void free_command_line(CommandLine *cmd) {
         }
         free(cmd->args[i]);
     }
-    free(cmd->input_file);
-    free(cmd->output_file);
+    if (cmd->input_file) {
+        free(cmd->input_file);
+    }
+    if (cmd->output_file) {
+        free(cmd->output_file);
+    }
     free(cmd);
 }
 
@@ -429,34 +310,22 @@ void execute_command(CommandLine *cmd) {
         default:
             // in parent process, wait for child to terminate
 
-            // execute in background if desired
+            // BACKGROUND EXECUTE
             if (cmd->background) {
                 // display bg process start to user
                 printf("background pid is %d\n", child_pid);
                 fflush(stdout);
-
-                // add pid to bg_process linked list
-                add_bg_process(child_pid);
-                print_bg_list();
-
-                child_pid = waitpid(child_pid, &child_status, WNOHANG);
+                child_pid = waitpid(child_pid, &child_status, WNOHANG);                
             }
-            // execute normally
+            // FOREGROUND EXECUTE
             else {
                 child_pid = waitpid(child_pid, &child_status, 0);
+                // store exit status
+                EXIT_STATUS = child_status;
             }
-
-            // // terminated normally
-            // if (WIFEXITED(child_status)) {
-            //     printf("child %d exited normally with status: %d\n", child_pid, WEXITSTATUS(child_status));
-            //     fflush(stdout);
-            // }
-            // // terminated abnormally
-            // else {
-            //     printf("child %d exited abnormally due to signal %d\n", child_pid, WTERMSIG(child_status));
-            //     fflush(stdout);
-            // }
         }
+        // // check for background processes that may have exited due to this command
+        // check_bg_processes();
 }
 
 int main() {
@@ -469,23 +338,12 @@ int main() {
     sigfillset(&si_action.sa_mask);
     si_action.sa_flags = 0;
     sigaction(SIGINT, &si_action, NULL);
-
-
-    pid_t term_pid;
-    int child_status;
     
     int runsh = 1;
 
     do {
-        // check for any terminated background processes before returning control to user
-        // (use while loop to catch multiple processes)
-        while ( (term_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
-            printf("background process %d is complete\n", term_pid);
-            fflush(stdout);
-            // remove from linked list
-            remove_bg_process(term_pid);
-            print_bg_list();
-        }
+        // check for background process that have exited normally
+        check_bg_processes();
 
         // set max prompt length
         int prompt_len = 2048;
@@ -504,14 +362,14 @@ int main() {
             }
         }
 
-        // if line starts empty, with whitespace, or with a comment, keep looping
+        // if line starts empty, with whitespace, or with a comment, continue
         if (line[0] == '\0' || line[0] == ' ' || line[0] == '#') {
             continue;
         }
 
-        // not empty, break command into pieces and store in struct
+        // break command into pieces and store in struct
         CommandLine *cmd = create_command_line(line);
-        //debug_command_line(cmd);
+        //print_command_line(cmd);
 
         // BUILT-IN COMMANDS
 
@@ -535,8 +393,7 @@ int main() {
         }
         // status
         else if (strcmp(cmd->args[0], "status") == 0) {
-            printf("exit value %d\n", EXIT_STATUS);
-            fflush(stdout);
+            print_exit_status();
         }
         // NON-BUILT IN COMMANDS
         else {
@@ -546,9 +403,6 @@ int main() {
         free_command_line(cmd);
 
     } while (runsh);
-
-    // free background process linked list (if any entries remain)
-    free_bg_list();
 
     return 0;
 }
