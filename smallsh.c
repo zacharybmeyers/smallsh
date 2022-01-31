@@ -145,6 +145,8 @@ void sigint_handler(int signo) {
     write(STDOUT_FILENO, message, 23);
     fflush(stdout);
     // NEED TO ACTUALLY KILL CHILD PROCESS SOMEHOW?
+
+    // TODO: CONSIDER STORING A LINKED LIST OF BACKGROUND PIDS
 }
 
 void execute_command(CommandLine *cmd) {
