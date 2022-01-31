@@ -32,14 +32,6 @@ void debug_command_line(CommandLine *cmd) {
     fflush(stdout);
 }
 
-// custom handler for Ctrl-C
-void sigint_handler(int signo) {
-    char *message = "terminated by signal 2\n";
-    write(STDOUT_FILENO, message, 23);
-    fflush(stdout);
-    // NEED tO ACTUALLY KILL CHILD PROCESS SOMEHOW?
-}
-
 // function takes a valid line and unpacks it into a CommandLine struct
 CommandLine *create_command_line(char *line) {
     CommandLine *cmd = malloc(sizeof(CommandLine));
@@ -147,8 +139,16 @@ void free_command_line(CommandLine *cmd) {
     free(cmd);
 }
 
+// custom handler for Ctrl-C
+void sigint_handler(int signo) {
+    char *message = "terminated by signal 2\n";
+    write(STDOUT_FILENO, message, 23);
+    fflush(stdout);
+    // NEED TO ACTUALLY KILL CHILD PROCESS SOMEHOW?
+}
+
 void execute_command(CommandLine *cmd) {
-    struct sigaction si_action = {{0}};
+    struct sigaction si_action = {};
     // background process: ignore Ctrl-C
     if (cmd->background) {
         si_action.sa_handler = SIG_IGN;
@@ -298,7 +298,7 @@ int main() {
     fflush(stdout);
 
     // ignore ^C by default
-    struct sigaction si_action = {{0}};
+    struct sigaction si_action = {};
     si_action.sa_handler = SIG_IGN;
     sigfillset(&si_action.sa_mask);
     si_action.sa_flags = 0;
