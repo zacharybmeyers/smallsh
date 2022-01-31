@@ -189,23 +189,7 @@ void free_command_line(CommandLine *cmd) {
     free(cmd);
 }
 
-void execute_command(CommandLine *cmd) {
-    struct sigaction si_action = {};
-    // background process: ignore Ctrl-C
-    if (cmd->background) {
-        si_action.sa_handler = SIG_IGN;
-        sigfillset(&si_action.sa_mask);
-        si_action.sa_flags = 0;
-        sigaction(SIGINT, &si_action, NULL);
-    }
-    // foreground process: assign signal handler for Ctrl-C
-    else {
-        si_action.sa_handler = sigint_handler;
-        sigfillset(&si_action.sa_mask);
-        si_action.sa_flags = 0;
-        sigaction(SIGINT, &si_action, NULL);
-    }
-    
+void execute_command(CommandLine *cmd, struct sigaction si_action) {
     int child_status, result;
     
     pid_t child_pid = fork();
@@ -217,6 +201,12 @@ void execute_command(CommandLine *cmd) {
             break;
         case 0:
             // in child process
+
+            // foreground process: allow Ctrl-C
+            if (!cmd->background) {
+                si_action.sa_handler = SIG_DFL;
+                sigaction(SIGINT, &si_action, NULL);
+            }
 
             // handle input
             if (cmd->input_file != NULL) {                
@@ -237,27 +227,7 @@ void execute_command(CommandLine *cmd) {
                 
                 // close fd
                 fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
-            } 
-            // // no input specified AND background process... redirect to dev/null
-            // else if (cmd->background) {
-            //     int sourceFD = open("/dev/null", O_RDONLY);
-            //     if (sourceFD == -1) {
-            //         printf("cannot open /dev/null for input\n");
-            //         fflush(stdout);
-            //         exit(1);
-            //     }
-
-            //     // redirect stdin to source file
-            //     result = dup2(sourceFD, 0);
-            //     if (result == -1) {
-            //         printf("failed source on dup2()\n");
-            //         fflush(stdout);
-            //         exit(1);
-            //     }
-
-            //     // close fd
-            //     fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
-            // }
+            }
 
             // handle output
             if (cmd->output_file != NULL) {
@@ -279,26 +249,6 @@ void execute_command(CommandLine *cmd) {
                 // close fd
                 fcntl(targetFD, F_SETFD, FD_CLOEXEC);
             }
-            // // no output specified AND background process... redirect to dev/null
-            // else if (cmd->background) {
-            //     int targetFD = open("/dev/null", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            //     if (targetFD == -1) {
-            //         printf("cannot open /dev/null for output\n");
-            //         fflush(stdout);
-            //         exit(1);
-            //     }
-
-            //     // redirect stdin to source file
-            //     result = dup2(targetFD, 0);
-            //     if (result == -1) {
-            //         printf("failed source on dup2()\n");
-            //         fflush(stdout);
-            //         exit(1);
-            //     }
-
-            //     // close fd
-            //     fcntl(targetFD, F_SETFD, FD_CLOEXEC);
-            // }
 
             // execute command
             if (execvp(cmd->args[0], cmd->args)) {
@@ -342,8 +292,8 @@ int main() {
     int runsh = 1;
 
     do {
-        // check for background process that have exited normally
-        if (WIFEXITED(EXIT_STATUS)) {
+        // check for background process that have terminated without a signal
+        if (!WIFSIGNALED(EXIT_STATUS)) {
             check_bg_processes();
         }
 
@@ -399,7 +349,7 @@ int main() {
         }
         // NON-BUILT IN COMMANDS
         else {
-            execute_command(cmd);
+            execute_command(cmd, si_action);
         }
 
         free_command_line(cmd);
