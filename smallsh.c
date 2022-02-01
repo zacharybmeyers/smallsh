@@ -22,31 +22,6 @@ void print_exit_status() {
     }
 }
 
-void check_bg_processes() {
-    pid_t term_pid;
-    int child_status;
-
-    // check for any terminated background processes before returning control to user
-    // (use while loop to catch multiple processes)
-    while ( (term_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
-        printf("background pid %d is done: ", term_pid);
-        fflush(stdout);
-
-        EXIT_STATUS = child_status;
-        print_exit_status();
-    }
-}
-
-// custom handler for Ctrl-C
-void sigint_handler(int signo) {
-    EXIT_STATUS = signo;
-    print_exit_status();
-    // char *message = "terminated by signal 2\n";
-    // write(STDOUT_FILENO, message, 23);
-    // fflush(stdout);
-    // NEED TO ACTUALLY KILL CHILD PROCESS SOMEHOW?
-}
-
 /*
     COMMAND LINE STRUCT AND ALL METHODS
         --print_command_line()
@@ -270,12 +245,36 @@ void execute_command(CommandLine *cmd, struct sigaction si_action) {
             // FOREGROUND EXECUTE
             else {
                 child_pid = waitpid(child_pid, &child_status, 0);
-                // store exit status
+                // display if terminated by Ctrl-C
+                if (WIFSIGNALED(child_status)) {
+                    printf("terminated by signal %d\n", WTERMSIG(child_status));
+                    fflush(stdout);
+                }
                 EXIT_STATUS = child_status;
             }
         }
-        // // check for background processes that may have exited due to this command
-        // check_bg_processes();
+}
+
+void check_bg_processes() {
+    pid_t term_pid;
+    int child_status;
+
+    // check for any terminated background processes before returning control to user
+    // (use while loop to catch multiple processes)
+    while ( (term_pid = waitpid(-1, &child_status, WNOHANG || WUNTRACED)) > 0 ) {
+        // if bg process exited normally
+        if (WIFEXITED(child_status)) {
+            printf("background pid %d is done: ", term_pid);
+            fflush(stdout);
+        }
+        // if terminated by signal
+        else if (WIFSIGNALED(child_status)) {
+            printf("terminated by signal %d\n", WTERMSIG(child_status));
+            fflush(stdout);
+        }
+        EXIT_STATUS = child_status;
+        print_exit_status();
+    }
 }
 
 int main() {
@@ -292,10 +291,8 @@ int main() {
     int runsh = 1;
 
     do {
-        // check for background process that have terminated without a signal
-        if (!WIFSIGNALED(EXIT_STATUS)) {
-            check_bg_processes();
-        }
+        // check for background process that have terminated
+        check_bg_processes();
 
         // set max prompt length
         int prompt_len = 2048;
