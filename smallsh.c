@@ -164,7 +164,7 @@ void free_command_line(CommandLine *cmd) {
     free(cmd);
 }
 
-void execute_command(CommandLine *cmd, struct sigaction si_action) {
+void execute_command(CommandLine *cmd, struct sigaction sa_sigint) {
     int child_status, result;
     
     pid_t child_pid = fork();
@@ -179,8 +179,8 @@ void execute_command(CommandLine *cmd, struct sigaction si_action) {
 
             // foreground process: allow Ctrl-C
             if (!cmd->background) {
-                si_action.sa_handler = SIG_DFL;
-                sigaction(SIGINT, &si_action, NULL);
+                sa_sigint.sa_handler = SIG_DFL;
+                sigaction(SIGINT, &sa_sigint, NULL);
             }
 
             // handle input
@@ -276,16 +276,29 @@ void check_bg_processes() {
     }
 }
 
+void handle_SIGTSTP(int signo) {
+    char *message = "you hit ctrl-z, nice job\n";
+    write(STDOUT_FILENO, message, 25);
+    fflush(stdout);
+}
+
 int main() {
     printf("welcome to smallsh!\n");
     fflush(stdout);
 
-    // ignore ^C by default
-    struct sigaction si_action = {};
-    si_action.sa_handler = SIG_IGN;
-    sigfillset(&si_action.sa_mask);
-    si_action.sa_flags = 0;
-    sigaction(SIGINT, &si_action, NULL);
+    // ignore Ctrl-C (SIGINT) by default
+    struct sigaction sa_sigint = {};
+    sa_sigint.sa_handler = SIG_IGN;
+    sigfillset(&sa_sigint.sa_mask);
+    sa_sigint.sa_flags = 0;
+    sigaction(SIGINT, &sa_sigint, NULL);
+
+    // ignore Ctrl-Z (SIGSTP) and handle with sgstp_handler instead
+    struct sigaction sa_sigtstp = {};
+    sa_sigtstp.sa_handler = handle_SIGTSTP;
+    sigfillset(&sa_sigtstp.sa_mask);
+    sa_sigtstp.sa_flags = 0;
+    sigaction(SIGTSTP, &sa_sigtstp, NULL);
     
     int runsh = 1;
 
@@ -345,7 +358,7 @@ int main() {
         }
         // NON-BUILT IN COMMANDS
         else {
-            execute_command(cmd, si_action);
+            execute_command(cmd, sa_sigint);
         }
 
         free_command_line(cmd);
