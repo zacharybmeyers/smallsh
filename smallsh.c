@@ -231,6 +231,7 @@ void execute_command(CommandLine *cmd, struct sigaction si_action) {
                 fflush(stdout);
                 exit(1);
             }
+
             break;
         default:
             // in parent process, wait for child to terminate
@@ -250,6 +251,7 @@ void execute_command(CommandLine *cmd, struct sigaction si_action) {
                     printf("terminated by signal %d\n", WTERMSIG(child_status));
                     fflush(stdout);
                 }
+                // update exit status
                 EXIT_STATUS = child_status;
             }
         }
@@ -261,17 +263,14 @@ void check_bg_processes() {
 
     // check for any terminated background processes before returning control to user
     // (use while loop to catch multiple processes)
-    while ( (term_pid = waitpid(-1, &child_status, WNOHANG || WUNTRACED)) > 0 ) {
+    while ( (term_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
         // if bg process exited normally
         if (WIFEXITED(child_status)) {
             printf("background pid %d is done: ", term_pid);
             fflush(stdout);
         }
-        // if terminated by signal
-        else if (WIFSIGNALED(child_status)) {
-            printf("terminated by signal %d\n", WTERMSIG(child_status));
-            fflush(stdout);
-        }
+
+        // update and print exit status
         EXIT_STATUS = child_status;
         print_exit_status();
     }
@@ -291,7 +290,7 @@ int main() {
     int runsh = 1;
 
     do {
-        // check for background process that have terminated
+        // check for background processes that have terminated before prompting user
         check_bg_processes();
 
         // set max prompt length
