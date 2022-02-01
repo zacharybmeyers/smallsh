@@ -289,8 +289,8 @@ int main() {
     // ignore Ctrl-C (SIGINT) by default
     struct sigaction sa_sigint = {};
     sa_sigint.sa_handler = SIG_IGN;
-    sigfillset(&sa_sigint.sa_mask);
-    sa_sigint.sa_flags = 0;
+    // sigfillset(&sa_sigint.sa_mask);
+    // sa_sigint.sa_flags = 0;
     sigaction(SIGINT, &sa_sigint, NULL);
 
     // ignore Ctrl-Z (SIGSTP) and handle with sgstp_handler instead
