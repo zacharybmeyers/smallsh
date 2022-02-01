@@ -277,9 +277,9 @@ void check_bg_processes() {
 }
 
 void handle_SIGTSTP(int signo) {
-    char *message = "you hit ctrl-z, nice job\n";
+    char const *message = "you hit ctrl-z, nice job\n";
     write(STDOUT_FILENO, message, 25);
-    fflush(stdout);
+    // TODO: BUGFIX: Ctrl-Z prints the same result of the previously entered shell command
 }
 
 int main() {
@@ -297,7 +297,7 @@ int main() {
     struct sigaction sa_sigtstp = {};
     sa_sigtstp.sa_handler = handle_SIGTSTP;
     sigfillset(&sa_sigtstp.sa_mask);
-    sa_sigtstp.sa_flags = 0;
+    sa_sigtstp.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &sa_sigtstp, NULL);
     
     int runsh = 1;
@@ -306,22 +306,32 @@ int main() {
         // check for background processes that have terminated before prompting user
         check_bg_processes();
 
-        // set max prompt length
-        int prompt_len = 2048;
-        char line[prompt_len];
+        // // set max prompt length
+        // int prompt_len = 2048;
+        // char line[prompt_len];
         
-        // start prompt with colon
-        printf(": ");
-        fflush(stdout);
-        fgets(line, prompt_len, stdin);
-        
-        // remove newline char
-        for (int i = 0; i < prompt_len; i++) {
-            if (line[i] == '\n') {
-                line[i] = '\0';
-                break;
-            }
-        }
+        // // start prompt with colon
+        // printf(": ");
+        // fflush(stdout);
+        // fgets(line, prompt_len, stdin);
+
+        // // remove newline char
+        // for (int i = 0; i < prompt_len; i++) {
+        //     if (line[i] == '\n') {
+        //         line[i] = '\0';
+        //         break;
+        //     }
+        // }
+
+        char const *colon = ": ";
+        write(STDOUT_FILENO, colon, 3);
+
+        // prompt user for command line
+        char *line = NULL;
+        size_t buflen = 0;
+        int chartotal = 0;
+        chartotal = getline(&line, &buflen, stdin);
+        line[chartotal - 1] = '\0';
 
         // if line starts empty, with whitespace, or with a comment, continue
         if (line[0] == '\0' || line[0] == ' ' || line[0] == '#') {
