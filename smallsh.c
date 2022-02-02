@@ -164,7 +164,7 @@ void free_command_line(CommandLine *cmd) {
     free(cmd);
 }
 
-void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigaction sa_sigtstp) {
+void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigaction sa_sigtstp) {    
     int child_status, result;
     
     pid_t child_pid = fork();
@@ -177,7 +177,7 @@ void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigact
         case 0:
             // in child process
 
-            // all processes ignore Ctrl-C 
+            // ignore Ctrl-Z for all children
             sa_sigtstp.sa_handler = SIG_IGN;
             sigaction(SIGTSTP, &sa_sigtstp, NULL);
 
@@ -305,7 +305,7 @@ int main() {
     sigfillset(&sa_sigtstp.sa_mask);
     sa_sigtstp.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &sa_sigtstp, NULL);
-    
+
     int runsh = 1;
 
     do {
