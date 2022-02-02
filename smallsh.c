@@ -8,6 +8,7 @@
 #include <signal.h>
 
 int EXIT_STATUS = 0;
+volatile sig_atomic_t flag = 0;
 
 void print_exit_status() {
     // exited normally
@@ -282,9 +283,20 @@ void check_bg_processes() {
 
 // signal handler for Ctrl-Z
 void handle_SIGTSTP(int signo) {
-    char const *message = "you hit ctrl-z, nice job\n";
+    // if flag is set, exit fg only mode, update flag
+    if (flag) {
+        char const *message = "Exiting foreground-only mode\n";
+        write(STDOUT_FILENO, message, 29);
+        flag = 0;
+    } 
+    // else enter fg mode, update flag
+    else {
+        char const *message = "Entering foreground-only mode (& is now ignored)\n";
+        write(STDOUT_FILENO, message, 49);
+        flag = 1;
+    }
+    // display colon to reprompt user
     char const *colon = ": ";
-    write(STDOUT_FILENO, message, 25);
     write(STDOUT_FILENO, colon, 3);
 }
 
@@ -293,14 +305,14 @@ int main() {
     fflush(stdout);
 
     // ignore Ctrl-C (SIGINT) by default
-    struct sigaction sa_sigint = {};
+    struct sigaction sa_sigint = {{0}};
     sa_sigint.sa_handler = SIG_IGN;
     sigfillset(&sa_sigint.sa_mask);
     sa_sigint.sa_flags = 0;
     sigaction(SIGINT, &sa_sigint, NULL);
 
     // ignore Ctrl-Z (SIGSTP) and handle with sgstp_handler instead
-    struct sigaction sa_sigtstp = {};
+    struct sigaction sa_sigtstp = {{0}};
     sa_sigtstp.sa_handler = handle_SIGTSTP;
     sigfillset(&sa_sigtstp.sa_mask);
     sa_sigtstp.sa_flags = SA_RESTART;
