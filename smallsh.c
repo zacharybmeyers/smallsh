@@ -164,7 +164,7 @@ void free_command_line(CommandLine *cmd) {
     free(cmd);
 }
 
-void execute_command(CommandLine *cmd, struct sigaction sa_sigint) {
+void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigaction sa_sigtstp) {
     int child_status, result;
     
     pid_t child_pid = fork();
@@ -176,6 +176,10 @@ void execute_command(CommandLine *cmd, struct sigaction sa_sigint) {
             break;
         case 0:
             // in child process
+
+            // all processes ignore Ctrl-C 
+            sa_sigtstp.sa_handler = SIG_IGN;
+            sigaction(SIGTSTP, &sa_sigtstp, NULL);
 
             // foreground process: allow Ctrl-C
             if (!cmd->background) {
@@ -276,10 +280,12 @@ void check_bg_processes() {
     }
 }
 
+// signal handler for Ctrl-Z
 void handle_SIGTSTP(int signo) {
     char const *message = "you hit ctrl-z, nice job\n";
+    char const *colon = ": ";
     write(STDOUT_FILENO, message, 25);
-    // TODO: BUGFIX: Ctrl-Z prints the same result of the previously entered shell command
+    write(STDOUT_FILENO, colon, 3);
 }
 
 int main() {
@@ -289,8 +295,8 @@ int main() {
     // ignore Ctrl-C (SIGINT) by default
     struct sigaction sa_sigint = {};
     sa_sigint.sa_handler = SIG_IGN;
-    // sigfillset(&sa_sigint.sa_mask);
-    // sa_sigint.sa_flags = 0;
+    sigfillset(&sa_sigint.sa_mask);
+    sa_sigint.sa_flags = 0;
     sigaction(SIGINT, &sa_sigint, NULL);
 
     // ignore Ctrl-Z (SIGSTP) and handle with sgstp_handler instead
@@ -306,23 +312,7 @@ int main() {
         // check for background processes that have terminated before prompting user
         check_bg_processes();
 
-        // // set max prompt length
-        // int prompt_len = 2048;
-        // char line[prompt_len];
-        
-        // // start prompt with colon
-        // printf(": ");
-        // fflush(stdout);
-        // fgets(line, prompt_len, stdin);
-
-        // // remove newline char
-        // for (int i = 0; i < prompt_len; i++) {
-        //     if (line[i] == '\n') {
-        //         line[i] = '\0';
-        //         break;
-        //     }
-        // }
-
+        // start prompt with :
         char const *colon = ": ";
         write(STDOUT_FILENO, colon, 3);
 
@@ -333,8 +323,10 @@ int main() {
         chartotal = getline(&line, &buflen, stdin);
         line[chartotal - 1] = '\0';
 
-        // if line starts empty, with whitespace, or with a comment, continue
-        if (line[0] == '\0' || line[0] == ' ' || line[0] == '#') {
+        // max prompt length is 2048 characters
+        int max_prompt_length = 2048;
+        // if line starts empty, with whitespace, with a comment, or exceeds max prompt length, continue
+        if (line[0] == '\0' || line[0] == ' ' || line[0] == '#' || chartotal > max_prompt_length) {
             continue;
         }
 
@@ -368,7 +360,7 @@ int main() {
         }
         // NON-BUILT IN COMMANDS
         else {
-            execute_command(cmd, sa_sigint);
+            execute_command(cmd, sa_sigint, sa_sigtstp);
         }
 
         free_command_line(cmd);
