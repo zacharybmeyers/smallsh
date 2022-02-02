@@ -56,8 +56,8 @@ void print_command_line(CommandLine *cmd) {
 
 // function takes a valid line and unpacks it into a CommandLine struct
 CommandLine *create_command_line(char *line) {
+    // initialize new struct and fields
     CommandLine *cmd = malloc(sizeof(CommandLine));
-    // init struct fields
     for (int i = 0; i < 512; i++) {
         cmd->args[i] = NULL;
     }
@@ -132,18 +132,24 @@ CommandLine *create_command_line(char *line) {
 
     } while ( (token = strtok_r(NULL, " ", &saveptr)) );
 
-    // set background if & was the last token
+    // if last token is background indicator
     if (strcmp(prev_token, "&") == 0) {
-        cmd->background = 1;
-        // remove & as last argument
+        // if NOT foreground only mode, set background status
+        if (!flag) {
+            cmd->background = 1;
+        }
+        // regardless of mode: remove & as last argument
         free(cmd->args[i-1]); 
         cmd->args[i-1] = NULL;
         // set argument count
         cmd->arg_count = i-1;
-    } else {
+    } 
+    // foreground: set argument count
+    else {
         cmd->arg_count = i;
     }
 
+    // free prev_token and return cmd struct
     free(prev_token);
     return cmd;
 }
@@ -269,11 +275,9 @@ void check_bg_processes() {
     // check for any terminated background processes before returning control to user
     // (use while loop to catch multiple processes)
     while ( (term_pid = waitpid(-1, &child_status, WNOHANG)) > 0 ) {
-        // if bg process exited normally
-        if (WIFEXITED(child_status)) {
-            printf("background pid %d is done: ", term_pid);
-            fflush(stdout);
-        }
+        // whether exited normally or by signal, show pid is done
+        printf("background pid %d is done: ", term_pid);
+        fflush(stdout);
 
         // update and print exit status
         EXIT_STATUS = child_status;
@@ -285,14 +289,14 @@ void check_bg_processes() {
 void handle_SIGTSTP(int signo) {
     // if flag is set, exit fg only mode, update flag
     if (flag) {
-        char const *message = "Exiting foreground-only mode\n";
-        write(STDOUT_FILENO, message, 29);
+        char const *message = "\nExiting foreground-only mode\n";
+        write(STDOUT_FILENO, message, 31);
         flag = 0;
     } 
-    // else enter fg mode, update flag
+    // else enter fg only mode, update flag
     else {
-        char const *message = "Entering foreground-only mode (& is now ignored)\n";
-        write(STDOUT_FILENO, message, 49);
+        char const *message = "\nEntering foreground-only mode (& is now ignored)\n";
+        write(STDOUT_FILENO, message, 51);
         flag = 1;
     }
     // display colon to reprompt user
@@ -301,9 +305,6 @@ void handle_SIGTSTP(int signo) {
 }
 
 int main() {
-    printf("welcome to smallsh!\n");
-    fflush(stdout);
-
     // ignore Ctrl-C (SIGINT) by default
     struct sigaction sa_sigint = {{0}};
     sa_sigint.sa_handler = SIG_IGN;
@@ -318,6 +319,9 @@ int main() {
     sa_sigtstp.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &sa_sigtstp, NULL);
 
+    // max prompt length is 2048 characters
+    int max_prompt_length = 2048;
+    // loop condition
     int runsh = 1;
 
     do {
@@ -335,8 +339,6 @@ int main() {
         chartotal = getline(&line, &buflen, stdin);
         line[chartotal - 1] = '\0';
 
-        // max prompt length is 2048 characters
-        int max_prompt_length = 2048;
         // if line starts empty, with whitespace, with a comment, or exceeds max prompt length, continue
         if (line[0] == '\0' || line[0] == ' ' || line[0] == '#' || chartotal > max_prompt_length) {
             continue;
@@ -344,12 +346,12 @@ int main() {
 
         // break command into pieces and store in struct
         CommandLine *cmd = create_command_line(line);
-        //print_command_line(cmd);
 
-        // BUILT-IN COMMANDS
-
+        // ---BUILT-IN COMMANDS---
         // exit
         if (strcmp(cmd->args[0], "exit") == 0) {
+            // TODO: kill all child processes on exit?
+            kill(0, SIGKILL);
             runsh = 0;
         } 
         // cd
@@ -370,7 +372,7 @@ int main() {
         else if (strcmp(cmd->args[0], "status") == 0) {
             print_exit_status();
         }
-        // NON-BUILT IN COMMANDS
+        // ---NON-BUILT IN COMMANDS---
         else {
             execute_command(cmd, sa_sigint, sa_sigtstp);
         }
