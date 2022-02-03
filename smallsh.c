@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <errno.h>
 
 int EXIT_STATUS = 0;
 volatile sig_atomic_t flag = 0;
@@ -341,6 +342,7 @@ void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigact
 
             // ignore Ctrl-Z for all children
             sa_sigtstp.sa_handler = SIG_IGN;
+            //sa_sigtstp.sa_flags = SA_RESTART;
             sigaction(SIGTSTP, &sa_sigtstp, NULL);
 
             // foreground process: allow Ctrl-C
@@ -460,9 +462,6 @@ void handle_SIGTSTP(int signo) {
         write(STDOUT_FILENO, message, 51);
         flag = 1;
     }
-    // display colon to reprompt user
-    char const *colon = ": ";
-    write(STDOUT_FILENO, colon, 3);
 }
 
 int main() {
@@ -477,7 +476,7 @@ int main() {
     struct sigaction sa_sigtstp = {{0}};
     sa_sigtstp.sa_handler = handle_SIGTSTP;
     sigfillset(&sa_sigtstp.sa_mask);
-    sa_sigtstp.sa_flags = SA_RESTART;
+    sa_sigtstp.sa_flags = 0;
     sigaction(SIGTSTP, &sa_sigtstp, NULL);
 
     // max prompt length is 2048 characters
@@ -485,9 +484,13 @@ int main() {
     // loop condition
     int runsh = 1;
 
-    do {
+    do {        
         // check for background processes that have terminated before prompting user
         check_bg_processes();
+
+        // flush before each prompt
+        fflush(stdout);
+        fflush(stdin);
 
         // start prompt with :
         char const *colon = ": ";
@@ -497,11 +500,25 @@ int main() {
         char *line = NULL;
         size_t buflen = 0;
         int chartotal = 0;
-        chartotal = getline(&line, &buflen, stdin);
+
+        // if the read() in getline() returns an error (interrupted by Ctrl-Z)
+        int save_err = errno;
+        errno = 0;
+        if ((chartotal = getline(&line, &buflen, stdin)) == -1) {
+            if (errno == EINTR) {
+                clearerr(stdin);
+                free(line);
+                continue;
+            }
+        }
+        errno = save_err;
+
+        // set newline char from user input to null terminator
         line[chartotal - 1] = '\0';
 
         // if line starts empty, with whitespace, with a comment, or exceeds max prompt length, continue
         if (line[0] == '\0' || line[0] == ' ' || line[0] == '#' || chartotal > max_prompt_length) {
+            free(line);
             continue;
         }
 
@@ -539,6 +556,7 @@ int main() {
         }
 
         free_command_line(cmd);
+        free(line);
 
     } while (runsh);
 
