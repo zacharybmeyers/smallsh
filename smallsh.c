@@ -330,6 +330,9 @@ void free_command_line(CommandLine *cmd) {
 void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigaction sa_sigtstp) {    
     int child_status, result;
     
+    struct sigaction default_sigtstp = {{0}};
+    struct sigaction default_sigint = {{0}};
+
     pid_t child_pid = fork();
 
     switch(child_pid) {
@@ -340,20 +343,32 @@ void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigact
         case 0:
             // in child process
 
-            // ignore Ctrl-Z for all children
-            sa_sigtstp.sa_handler = SIG_IGN;
-            //sa_sigtstp.sa_flags = SA_RESTART;
-            sigaction(SIGTSTP, &sa_sigtstp, NULL);
+            // // ignore Ctrl-Z for foreground and background
+            // sa_sigtstp.sa_handler = SIG_IGN;
+            // //sa_sigtstp.sa_flags = SA_RESTART;
+            // sigaction(SIGTSTP, &sa_sigtstp, NULL);
 
-            // foreground process: allow Ctrl-C
+            // ignore Ctrl-Z for foreground and background
+            default_sigtstp.sa_handler = SIG_IGN;
+            sigfillset(&default_sigtstp.sa_mask);
+            default_sigtstp.sa_flags = 0;
+            sigaction(SIGTSTP, &default_sigtstp, NULL);
+
+            // foreground process only
             if (!cmd->background) {
-                sa_sigint.sa_handler = SIG_DFL;
-                sigaction(SIGINT, &sa_sigint, NULL);
+                // allow Ctrl-C
+                default_sigint.sa_handler = SIG_DFL;
+                sigfillset(&default_sigint.sa_mask);
+                default_sigint.sa_flags = 0;
+                sigaction(SIGINT, &default_sigint, NULL);
             }
 
-            // handle input
+            // handle input redirection
             if (cmd->input_file != NULL) {                
+                // open source file
                 int sourceFD = open(cmd->input_file, O_RDONLY);
+
+                // failure to open
                 if (sourceFD == -1) {
                     printf("cannot open %s for input\n", cmd->input_file);
                     fflush(stdout);
@@ -372,11 +387,62 @@ void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigact
                 fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
             }
 
-            // handle output
+            // handle output redirection
             if (cmd->output_file != NULL) {
+                // open target file
                 int targetFD = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+                // failure to open
                 if (targetFD == -1) {
                     printf("cannot open %s for output\n", cmd->output_file);
+                    fflush(stdout);
+                    exit(1);
+                }
+                
+                // redirect stdout to target file
+                result = dup2(targetFD, 1);
+                if (result == -1) {
+                    printf("failed target on dup2()\n");
+                    fflush(stdout);
+                    exit(1);
+                }
+
+                // close fd
+                fcntl(targetFD, F_SETFD, FD_CLOEXEC);
+            }
+
+            // if bg process and no input: redirect to /dev/null
+            if (cmd->background && cmd->input_file == NULL) {
+                // open /dev/null
+                int sourceFD = open("/dev/null", O_RDONLY);
+                
+                // failure to open
+                if (sourceFD == -1) {
+                    printf("cannot open /dev/null for input\n");
+                    fflush(stdout);
+                    exit(1);
+                }
+
+                // redirect stdin to source file
+                result = dup2(sourceFD, 0);
+                if (result == -1) {
+                    printf("failed source on dup2()\n");
+                    fflush(stdout);
+                    exit(1);
+                }
+                
+                // close fd
+                fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
+            }
+
+            // if bg process and no output: redirect to /dev/null
+            if (cmd->background && cmd->output_file == NULL) {
+                // open /dev/null
+                int targetFD = open("/dev/null", O_WRONLY);
+                
+                // failure to open
+                if (targetFD == -1) {
+                    printf("cannot open /dev/null for output\n");
                     fflush(stdout);
                     exit(1);
                 }
@@ -417,8 +483,8 @@ void execute_command(CommandLine *cmd, struct sigaction sa_sigint, struct sigact
             // FOREGROUND EXECUTE
             else {
                 child_pid = waitpid(child_pid, &child_status, 0);
-                // display if terminated by Ctrl-C
-                if (WIFSIGNALED(child_status)) {
+                // display only if terminated by Ctrl-C
+                if (WIFSIGNALED(child_status) && WTERMSIG(child_status == 2)) {
                     printf("terminated by signal %d\n", WTERMSIG(child_status));
                     fflush(stdout);
                 }
