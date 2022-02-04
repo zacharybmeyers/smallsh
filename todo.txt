@@ -1,4 +1,1 @@
-TODO: address double ":" appearing on lines in test script              xxSOLVEDxx
-    see https://edstem.org/us/courses/16718/discussion/1079212 
 TODO: refactor linked list and command line into separate header files  
-TODO: address ctrl-z affecting foreground commands
