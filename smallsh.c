@@ -19,21 +19,12 @@ Description: This program creates an interactive small shell (smallsh) to practi
 #include <signal.h>
 #include <errno.h>
 
+// global variables
 int EXIT_STATUS = 0;
 volatile sig_atomic_t flag = 0;
 
-void print_exit_status() {
-    // exited normally
-    if (WIFEXITED(EXIT_STATUS)) {
-        printf("exit value %d\n", WEXITSTATUS(EXIT_STATUS));
-        fflush(stdout);
-    }
-    // exited due to signal
-    else if (WIFSIGNALED(EXIT_STATUS)) {
-        printf("terminated by signal %d\n", WTERMSIG(EXIT_STATUS));
-        fflush(stdout);
-    }
-}
+// function declarations
+void print_exit_status();
 
 /*
     GLOBAL LINKED LIST FOR BACKGROUND PROCESSES AND ALL METHODS
@@ -45,18 +36,19 @@ void print_exit_status() {
         --print_bg_list()
 */
 
-struct bg_process {
+typedef struct BgProc {
     int bg_pid;
-    struct bg_process *prev;
-    struct bg_process *next;
-};
+    struct BgProc *prev;
+    struct BgProc *next;
+} BgProc;
 
-struct bg_process *bg_head = NULL;
-struct bg_process *bg_tail = NULL;
+BgProc *bg_head = NULL;
+BgProc *bg_tail = NULL;
 
+// add node to linked list
 void add_bg_process(int pid) {
     // create new node
-    struct bg_process *new_node = malloc(sizeof(struct bg_process));
+    BgProc *new_node = malloc(sizeof(BgProc));
     new_node->bg_pid = pid;
     new_node->prev = NULL;
     new_node->next = NULL;
@@ -75,6 +67,7 @@ void add_bg_process(int pid) {
     }
 }
 
+// remove head of linked list
 void remove_bg_head() {
     // if head is only node
     if (bg_head->next == NULL && bg_head->prev == NULL) {
@@ -84,7 +77,7 @@ void remove_bg_head() {
     } 
     // otherwise, move head to next node
     else {
-        struct bg_process *temp;
+        BgProc *temp;
         temp = bg_head;
         bg_head = temp->next;
         bg_head->prev = NULL;
@@ -94,6 +87,7 @@ void remove_bg_head() {
     }
 }
 
+// remove tail of linked list
 void remove_bg_tail() {
     // if tail is only node
     if (bg_tail->next == NULL && bg_tail->prev == NULL) {
@@ -103,7 +97,7 @@ void remove_bg_tail() {
     }
     // otherwise, move tail to previous node
     else {
-        struct bg_process *temp;
+        BgProc *temp;
         temp = bg_tail;
         bg_tail = temp->prev;
         bg_tail->next = NULL;
@@ -113,6 +107,7 @@ void remove_bg_tail() {
     }    
 }
 
+// remove node from linked list
 void remove_bg_process(int pid) {
     // no processes to remove
     if (bg_head == NULL && bg_tail == NULL) {
@@ -129,7 +124,7 @@ void remove_bg_process(int pid) {
     // if middle node
     else {
         // get current node
-        struct bg_process *curr;
+        BgProc *curr;
         curr = bg_head;
 
         // loop until curr node is the removal node
@@ -138,9 +133,9 @@ void remove_bg_process(int pid) {
         }
 
         // create pointers to left and right of curr
-        struct bg_process *left;
+        BgProc *left;
         left = curr->prev;
-        struct bg_process *right;
+        BgProc *right;
         right = curr->next;
 
         // point over removal node
@@ -155,15 +150,16 @@ void remove_bg_process(int pid) {
     
 }
 
+// helper function to free linked list
 void free_bg_list() {
     // get head
-    struct bg_process *curr;
+    BgProc *curr;
     curr = bg_head;
 
     // if there's at least one node
     while (curr) {
         // store next
-        struct bg_process *next;
+        BgProc *next;
         next = curr->next;
 
         // kill process
@@ -178,8 +174,9 @@ void free_bg_list() {
     }
 }
 
+// helper function to print contents of linked list
 void print_bg_list() {
-    struct bg_process *curr;
+    BgProc *curr;
     curr = bg_head;
 
     printf("NULL ");
@@ -205,21 +202,6 @@ typedef struct CommandLine {
     int background;
     int arg_count;
 } CommandLine;
-
-// helper function to print contents of CommandLine struct
-void print_command_line(CommandLine *cmd) {
-    for (int i = 0; i < 512; i++) {
-        if (cmd->args[i] == NULL) {
-            break;
-        }
-        printf("cmd->args[%d]: %s\n", i, cmd->args[i]);
-    }
-    printf("cmd->input_file: %s\n", cmd->input_file);
-    printf("cmd->output_file: %s\n", cmd->output_file);
-    printf("cmd->background: %d\n", cmd->background);
-    printf("cmd->arg_count: %d\n", cmd->arg_count);
-    fflush(stdout);
-}
 
 // function takes a valid line and unpacks it into a CommandLine struct
 CommandLine *create_command_line(char *line) {
@@ -338,6 +320,22 @@ void free_command_line(CommandLine *cmd) {
     free(cmd);
 }
 
+// helper function to print contents of CommandLine struct
+void print_command_line(CommandLine *cmd) {
+    for (int i = 0; i < 512; i++) {
+        if (cmd->args[i] == NULL) {
+            break;
+        }
+        printf("cmd->args[%d]: %s\n", i, cmd->args[i]);
+    }
+    printf("cmd->input_file: %s\n", cmd->input_file);
+    printf("cmd->output_file: %s\n", cmd->output_file);
+    printf("cmd->background: %d\n", cmd->background);
+    printf("cmd->arg_count: %d\n", cmd->arg_count);
+    fflush(stdout);
+}
+
+// execute a non-built in command with the use of fork() and execvp()
 void execute_command(CommandLine *cmd) {    
     int child_status, result;
 
@@ -489,22 +487,50 @@ void execute_command(CommandLine *cmd) {
             // display bg process start to user
             printf("background pid is %d\n", child_pid);
             fflush(stdout);
+
+            // wait in background for process to complete
             child_pid = waitpid(child_pid, &child_status, WNOHANG);                
         }
         // FOREGROUND EXECUTE
         else {
+            // wait in foreground for process to complete
             child_pid = waitpid(child_pid, &child_status, 0);
+
             // display only if terminated by Ctrl-C
             if (WIFSIGNALED(child_status) && WTERMSIG(child_status == 2)) {
                 printf("terminated by signal %d\n", WTERMSIG(child_status));
                 fflush(stdout);
             }
+
             // update exit status
             EXIT_STATUS = child_status;
         }
     }
 }
 
+/*
+        MAIN SHELL AND HELPER FUNCTIONS
+            --print_exit_status()
+            --check_bg_processes()
+            --handle_SIGTSTP()
+            --main()
+*/
+
+// helper function to print the most recent exit status
+void print_exit_status() {
+    // exited normally
+    if (WIFEXITED(EXIT_STATUS)) {
+        printf("exit value %d\n", WEXITSTATUS(EXIT_STATUS));
+        fflush(stdout);
+    }
+    // exited due to signal
+    else if (WIFSIGNALED(EXIT_STATUS)) {
+        printf("terminated by signal %d\n", WTERMSIG(EXIT_STATUS));
+        fflush(stdout);
+    }
+}
+
+// helper function checks for any terminated background processes
 void check_bg_processes() {
     pid_t term_pid;
     int child_status;
@@ -541,6 +567,7 @@ void handle_SIGTSTP(int signo) {
     }
 }
 
+// main shell logic
 int main() {
     // ignore Ctrl-Z (SIGTSTP) and handle with handle_SIGTSTP instead
     struct sigaction sa_sigtstp = {{0}};
@@ -554,7 +581,7 @@ int main() {
     // loop condition
     int runsh = 1;
 
-    do {        
+    while (runsh) {        
         // check for background processes that have terminated before prompting user
         check_bg_processes();
 
@@ -616,7 +643,7 @@ int main() {
         free_command_line(cmd);
         free(line);
 
-    } while (runsh);
+    }
 
     // remove linked list and kill all bg processes
     free_bg_list();
