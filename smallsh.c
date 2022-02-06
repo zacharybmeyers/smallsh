@@ -1,3 +1,14 @@
+/* 
+
+Name: Zachary Meyers
+Date: 2022-02-05
+Description: This program creates an interactive small shell (smallsh) to practice 
+            command execution, signal handling, i/o redirection, and variable expansion in C.
+            A linked list implementation is used to store/cleanup background processes, and
+            a CommandLine struct is used to parse and store user entered commands. 
+
+*/
+
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
